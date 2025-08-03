@@ -1,5 +1,36 @@
 # Product Requirements Document: Stocker
 
+## Implementation Status Summary
+
+### ✅ Completed
+- Core infrastructure setup with TypeScript and Bun
+- Configuration management with YAML support and environment variables
+- EOD Historical Data service with splits support
+- Complete DuckDB storage layer with Parquet format
+- Data types with both raw and adjusted prices
+- Basic library API (fetch, list, info methods)
+- Metadata tracking in DuckDB
+
+### ⏳ In Progress
+- Rate limiting and retry logic
+- CLI implementation with Clipanion
+
+### 📋 Not Started
+- Yahoo Finance service (deferred)
+- Git integration for data versioning
+- Import command for CSV migration
+- Direct SQL query interface
+- Progress bars and enhanced logging
+- Integration tests
+
+### 🔄 Key Changes from Original Design
+1. Config key changed from `eod` to `eodhd`
+2. Environment variable changed from `EOD_HISTORICAL_DATA_API_KEY` to `EODHD_API_KEY`
+3. OHLCV type expanded to include adjusted values for all OHLC prices
+4. Using duckdb-async instead of duckdb
+5. Currently using dotenv (should be removed for Bun)
+6. CLI not yet implemented - currently library-only
+
 ## Overview
 Stocker is a TypeScript-based CLI tool for fetching, storing, and managing historical stock market data using a modern data architecture built on DuckDB and Parquet files. It serves as both a data fetching tool and a versioned data store for long-term financial datasets.
 
@@ -45,6 +76,8 @@ data/                       # Project-relative data directory (git-tracked)
   - API key management (EOD Historical Data)
   - Default paths and settings
   - Runtime configuration overrides via constructor
+  - Time interval constants for future intraday support
+- **Changes**: Using dotenv for environment variables (contradicts Bun guidance)
 
 ### 2. Data Services
 Port the following Python services to TypeScript:
@@ -68,6 +101,12 @@ Port the following Python services to TypeScript:
 - **Files**: 
   - `src/storage/base.ts` - Generic DuckDB/Parquet operations
   - `src/storage/stocks.ts` - Stock-specific storage logic
+- **Implementation**:
+  - Uses duckdb-async for database operations
+  - Implements full Parquet read/write with ZSTD compression
+  - Smart merge functionality with atomic file replacement
+  - Dynamic view creation based on existing files
+  - Metadata tracking in DuckDB table
 - **Interface**:
 ```typescript
 interface StorageProvider {
@@ -88,18 +127,34 @@ interface StorageProvider {
 }
 ```
 
-### 4. Data Types
+### 4. Data Types ✅
 ```typescript
 interface OHLCV {
   date: string;          // YYYY-MM-DD format
+  
+  // Raw prices (as reported on that day)
   open: number;
   high: number;
   low: number;
   close: number;
-  adjustedClose: number;
   volume: number;
+  
+  // Adjusted prices (for splits/dividends)
+  adjOpen: number;
+  adjHigh: number;
+  adjLow: number;
+  adjClose: number;
+  adjVolume: number;
+  
+  // Metadata
+  percentChange?: number;
   split?: boolean;
   dividends?: number;
+  dataSource?: string;
+  fetchedAt?: string;
+  
+  // Legacy - will be removed
+  adjustedClose?: number;
 }
 
 interface StockMetadata {
@@ -110,8 +165,29 @@ interface StockMetadata {
   recordCount: number;
 }
 ```
+- **Changes**: Expanded OHLCV to include both raw and adjusted prices for all OHLC values, not just close
 
 ### 5. CLI Commands
+
+**Note**: CLI not yet implemented. Currently available as a library through `src/index.ts`:
+
+```typescript
+import { Stocker } from './src/index.ts';
+
+const stocker = new Stocker();
+await stocker.init();
+
+// Fetch data
+await stocker.fetch('AAPL', { start: '2023-01-01', update: true });
+
+// List tickers
+const tickers = await stocker.list();
+
+// Get info
+await stocker.info('AAPL');
+```
+
+#### Planned CLI Commands:
 
 #### `stocker fetch <ticker>`
 - Fetch historical data for a ticker
@@ -140,31 +216,31 @@ interface StockMetadata {
 
 ## Implementation Phases
 
-### Phase 1: Core Infrastructure (Week 1)
+### Phase 1: Core Infrastructure
 1. ✅ Set up TypeScript project with Bun
 2. ✅ Implement configuration management
 3. ✅ Create DuckDB storage provider interface
 4. ✅ Set up basic CLI structure with Clipanion
 
-### Phase 2: Data Services (Week 2)
-1. Port EOD Historical Data service
-2. Port Yahoo Finance service
-3. Implement rate limiting and retry logic
-4. Create unified data transformation layer
+### Phase 2: Data Services
+1. ✅ Port EOD Historical Data service
+2. ⏸️ Port Yahoo Finance service (deferred)
+3. ⏳ Implement rate limiting and retry logic
+4. ✅ Create unified data transformation layer
 
-### Phase 3: Storage Implementation (Week 3)
-1. Implement DuckDB storage provider
-2. Create Parquet read/write functionality
-3. Implement merge/update logic
-4. Set up database views and indexes
+### Phase 3: Storage Implementation
+1. ✅ Implement DuckDB storage provider
+2. ✅ Create Parquet read/write functionality
+3. ✅ Implement merge/update logic
+4. ✅ Set up database views and indexes
 
-### Phase 4: CLI Commands (Week 4)
+### Phase 4: CLI Commands
 1. Implement fetch command
 2. Implement update command
 3. Implement query interface
 4. Add list, info, and import commands
 
-### Phase 5: Polish & Testing (Week 5)
+### Phase 5: Polish & Testing
 1. Add comprehensive error handling
 2. Implement progress bars and logging
 3. Write integration tests
@@ -201,8 +277,8 @@ interface StockMetadata {
 ```yaml
 # ~/.stocker/config.yml
 sources:
-  eod:
-    apiKey: ${EOD_HISTORICAL_DATA_API_KEY}
+  eodhd:  # Note: changed from 'eod' to 'eodhd' in implementation
+    apiKey: ${EODHD_API_KEY}  # Note: changed env var name
     rateLimit: 20  # requests per second
   yahoo:
     enabled: true
@@ -230,13 +306,14 @@ defaults:
 ```json
 {
   "dependencies": {
-    "clipanion": "^4.0.0",
-    "duckdb": "^1.0.0",
-    "parquetjs": "^1.0.0",
-    "simple-git": "^3.0.0",
-    "axios": "^1.0.0",
-    "p-limit": "^5.0.0",
-    "yaml": "^2.0.0"
+    "clipanion": "^4.0.0",         // CLI framework (not yet used)
+    "duckdb-async": "^1.0.0",      // DuckDB bindings (using async version)
+    "parquetjs": "^1.0.0",         // Not used - DuckDB handles Parquet directly
+    "simple-git": "^3.0.0",        // Git operations (not yet implemented)
+    "axios": "^1.0.0",             // HTTP client for API calls
+    "p-limit": "^5.0.0",           // Rate limiting (not yet implemented)
+    "yaml": "^2.0.0",              // Config file parsing
+    "dotenv": "^16.0.0"            // Environment variables (should be removed for Bun)
   }
 }
 ```

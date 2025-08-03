@@ -27,26 +27,40 @@ export class Stocker {
       start?: string;
       end?: string;
       update?: boolean;
+      fillGaps?: boolean;
     }
   ): Promise<void> {
     const symbol = ticker.toUpperCase();
 
+    // When update is true and no explicit start/end dates are provided,
+    // fetch all data to ensure gaps are filled
     if (options?.update && (await this.storage.exists(symbol))) {
-      // Get last date from storage
-      const existing = await this.storage.getDaily(symbol);
-      if (existing.length > 0) {
-        const lastDate = existing[existing.length - 1]!.date;
-        const nextDate = new Date(lastDate);
-        nextDate.setDate(nextDate.getDate() + 1);
-        options.start = nextDate.toISOString().split("T")[0];
+      // Only set start date if not explicitly provided
+      if (!options.start && !options.end) {
+        // Fetch all data to fill any gaps
+        console.log(
+          `Fetching all data for ${symbol} to fill any gaps...`
+        );
+      } else if (!options.start) {
+        // If only end date is provided, still fetch from beginning
+        console.log(
+          `Fetching ${symbol} from beginning to ${options.end}...`
+        );
+      } else {
+        // Use provided dates
+        console.log(
+          `Fetching ${symbol} from ${options.start} to ${
+            options.end || "today"
+          }...`
+        );
       }
+    } else {
+      console.log(
+        `Fetching ${symbol} from ${options?.start || "beginning"} to ${
+          options?.end || "today"
+        }...`
+      );
     }
-
-    console.log(
-      `Fetching ${symbol} from ${options?.start || "beginning"} to ${
-        options?.end || "today"
-      }...`
-    );
 
     // Fetch data
     const data = await this.dataService.fetchDaily(
@@ -83,6 +97,40 @@ export class Stocker {
     }
   }
 
+  async updateSmart(ticker: string): Promise<void> {
+    const symbol = ticker.toUpperCase();
+    
+    if (!(await this.storage.exists(symbol))) {
+      console.log(`No existing data for ${symbol}, performing initial fetch...`);
+      await this.fetch(ticker);
+      return;
+    }
+
+    const data = await this.storage.getDaily(symbol);
+    
+    // Check for gaps
+    const gaps = this.findGaps(data);
+    
+    if (gaps.length > 0) {
+      console.log(`Found ${gaps.length} gaps in ${symbol} data`);
+      
+      // Fetch all data to fill gaps
+      await this.fetch(ticker, { update: true });
+    } else {
+      // Just update from last date
+      if (data.length > 0) {
+        const lastDate = data[data.length - 1]!.date;
+        const nextDate = new Date(lastDate);
+        nextDate.setDate(nextDate.getDate() + 1);
+        
+        await this.fetch(ticker, {
+          start: nextDate.toISOString().split("T")[0],
+          update: true
+        });
+      }
+    }
+  }
+
   async list(): Promise<string[]> {
     return this.storage.listTickers();
   }
@@ -104,6 +152,50 @@ export class Stocker {
     console.log(`First date: ${data[0]?.date}`);
     console.log(`Last date: ${data[data.length - 1]?.date}`);
     console.log(`Last update: ${lastUpdate?.toISOString()}`);
+
+    // Check for gaps
+    const gaps = this.findGaps(data);
+    if (gaps.length > 0) {
+      console.log(`\nData gaps detected (${gaps.length}):`);
+      gaps.slice(0, 5).forEach(gap => {
+        console.log(`  ${gap.start} to ${gap.end} (${gap.days} days)`);
+      });
+      if (gaps.length > 5) {
+        console.log(`  ... and ${gaps.length - 5} more gaps`);
+      }
+    }
+  }
+
+  private findGaps(data: Array<{ date: string }>): Array<{ start: string; end: string; days: number }> {
+    const gaps: Array<{ start: string; end: string; days: number }> = [];
+    
+    if (data.length < 2) return gaps;
+
+    for (let i = 1; i < data.length; i++) {
+      const prevDate = new Date(data[i - 1]!.date);
+      const currDate = new Date(data[i]!.date);
+      
+      // Calculate expected next trading day (skip weekends)
+      let expectedDate = new Date(prevDate);
+      expectedDate.setDate(expectedDate.getDate() + 1);
+      
+      // Skip weekends
+      while (expectedDate.getDay() === 0 || expectedDate.getDay() === 6) {
+        expectedDate.setDate(expectedDate.getDate() + 1);
+      }
+      
+      // If there's a gap of more than 1 trading day
+      const daysDiff = Math.floor((currDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 0) {
+        gaps.push({
+          start: expectedDate.toISOString().split('T')[0]!,
+          end: new Date(currDate.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!,
+          days: daysDiff + 1
+        });
+      }
+    }
+    
+    return gaps;
   }
 
   async query(sql: string): Promise<any[]> {
