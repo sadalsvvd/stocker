@@ -1,6 +1,6 @@
 {
   "name": "stocker",
-  "module": "index.ts",
+  "main": "src/index.ts",
   "type": "module",
   "bin": {
     "stocker": "./src/cli/stocker.ts"
@@ -15,6 +15,7 @@
     "@stonksjs/finviz": "^3.0.1",
     "axios": "^1.11.0",
     "clipanion": "^4.0.0-rc.4",
+    "csv-parse": "^6.1.0",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.1",
     "duckdb-async": "^1.3.2",

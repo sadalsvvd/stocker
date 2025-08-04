@@ -2,6 +2,7 @@ import { Command, Option } from "clipanion";
 import { Stocker } from "../../index";
 import { SECService } from "../../services/sec";
 import { ReferenceStorage } from "../../storage/reference";
+import { TickerUpdaterService } from "../../services/ticker-updater";
 
 export class TickersCommand extends Command {
   static override paths = [["tickers"]];
@@ -38,63 +39,72 @@ export class TickersUpdateCommand extends Command {
     details: `
       This command fetches the latest ticker information from:
       - SEC company tickers (all US public companies)
-      - Future: NASDAQ FTP, IPO calendars, etc.
+      - Finviz for additional metadata
+      - Detects delisted tickers
+      - Updates data quality ratings
     `,
-    examples: [["Update ticker universe", "stocker tickers update"]],
+    examples: [
+      ["Update ticker universe", "stocker tickers update"],
+      ["Update and verify quality", "stocker tickers update --verify"],
+    ],
+  });
+  
+  verify = Option.Boolean("--verify", false, {
+    description: "Verify and update data quality ratings",
   });
 
   async execute() {
     const stocker = new Stocker();
     await stocker.init();
 
-    const referenceStorage = new ReferenceStorage(
-      stocker.storage.dataDir.replace("/stocks", "")
-    );
-    await referenceStorage.init();
-
     try {
-      // Fetch from SEC
-      const secService = new SECService();
-      console.log("Fetching ticker data from SEC...");
-      const secTickers = await secService.fetchAllTickers();
-
-      // Get existing tickers to preserve metadata
-      const existingTickers = await referenceStorage.getAllTickers();
-      const existingMap = new Map(existingTickers.map((t) => [t.symbol, t]));
-
-      // Merge with existing data
-      const mergedTickers = secTickers.map((ticker) => {
-        const existing = existingMap.get(ticker.symbol);
-        if (existing) {
-          // Preserve certain fields from existing data
-          return {
-            ...ticker,
-            firstSeen: existing.firstSeen,
-            ipoDate: existing.ipoDate,
-            sector: existing.sector || ticker.sector,
-            industry: existing.industry || ticker.industry,
-            metadata: {
-              ...existing.metadata,
-              ...ticker.metadata,
-            },
-          };
-        }
-        return ticker;
-      });
-
-      // Save to database
-      await referenceStorage.upsertTickers(mergedTickers);
-
-      // Show stats
-      const stats = await referenceStorage.getTickerStats();
-      console.log("\nTicker universe updated:");
-      console.log(`  Total tickers: ${stats.total}`);
-      console.log(`  Active: ${stats.active}`);
-      console.log(`  Delisted: ${stats.delisted}`);
-      console.log("\nBy exchange:");
+      // Use the unified updater with multiple sources
+      const dataDir = stocker.storage.dataDir.replace("/stocks", "");
+      const refStorage = new ReferenceStorage(dataDir);
+      await refStorage.init();
+      
+      // Get API key from config if available
+      let eodApiKey: string | undefined;
+      try {
+        const configPath = stocker['configPath'] || '~/.stocker/config.yml';
+        const { loadConfig } = await import('../../config');
+        const config = await loadConfig(configPath);
+        eodApiKey = config.sources?.eodhd?.apiKey;
+      } catch (e) {
+        // Config may not exist, continue without API key
+      }
+      
+      const updater = new TickerUpdaterService(refStorage, eodApiKey);
+      
+      console.log('Starting ticker universe update...');
+      const result = await updater.updateTickerUniverse();
+      
+      console.log('\n=== Update Summary ===');
+      console.log(`Added: ${result.added} new tickers`);
+      console.log(`Updated: ${result.updated} existing tickers`);
+      console.log(`Delisted: ${result.delisted} tickers`);
+      
+      if (result.errors.length > 0) {
+        console.log(`\nErrors: ${result.errors.length}`);
+        result.errors.slice(0, 5).forEach(err => console.log(`  - ${err}`));
+      }
+      
+      if (this.verify) {
+        console.log('\nVerifying data quality...');
+        await updater.verifyAndRateTickers();
+      }
+      
+      const stats = await refStorage.getTickerStats();
+      console.log('\n=== Database Stats ===');
+      console.log(`Total tickers: ${stats.total}`);
+      console.log(`Active: ${stats.active}`);
+      console.log(`Delisted: ${stats.delisted}`);
+      console.log('\nBy exchange:');
       Object.entries(stats.byExchange).forEach(([exchange, count]) => {
         console.log(`  ${exchange}: ${count}`);
       });
+      
+      await refStorage.close();
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

@@ -95,7 +95,7 @@ export class Stocker {
       await this.storage.writeDaily(symbol, data);
       console.log(`Stored ${symbol} with ${data.length} records`);
     }
-    
+
     // Track ticker in registry if not already present
     const existingTicker = await this.referenceStorage.getTicker(symbol);
     if (!existingTicker) {
@@ -109,8 +109,8 @@ export class Stocker {
         lastUpdated: new Date().toISOString().split("T")[0]!,
         metadata: {
           source: "manual_fetch",
-          addedBy: "stocker_fetch"
-        }
+          addedBy: "stocker_fetch",
+        },
       };
       await this.referenceStorage.upsertTickers([tickerInfo]);
     }
@@ -300,9 +300,11 @@ export class Stocker {
 
 // Export everything for library usage
 export * from "./types/index.ts";
+export type { OHLCV } from "./types/index.ts";
 export * from "./config.ts";
 export * from "./services/eodHistorical.ts";
 export * from "./services/sec.ts";
+export * from "./services/price-loader.ts";
 export * from "./storage/base.ts";
 export * from "./storage/stocks.ts";
 export * from "./storage/reference.ts";

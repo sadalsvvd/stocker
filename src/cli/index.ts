@@ -1,20 +1,22 @@
 #!/usr/bin/env bun
 
-import { Cli, Builtins } from 'clipanion';
-import { FetchCommand } from './commands/fetch';
-import { ListCommand } from './commands/list';
-import { InfoCommand } from './commands/info';
-import { 
-  TickersCommand, 
-  TickersUpdateCommand, 
-  TickersSearchCommand, 
-  TickersStatsCommand 
-} from './commands/tickers';
+import { Cli, Builtins } from "clipanion";
+import { FetchCommand } from "./commands/fetch";
+import { ListCommand } from "./commands/list";
+import { InfoCommand } from "./commands/info";
+import {
+  TickersCommand,
+  TickersUpdateCommand,
+  TickersSearchCommand,
+  TickersStatsCommand,
+} from "./commands/tickers";
+import { MigrateCSVCommand } from "./commands/migrate-csv";
+import { PricesCommand } from "./commands/prices";
 
 const cli = new Cli({
-  binaryLabel: 'stocker',
-  binaryName: 'stocker',
-  binaryVersion: '1.0.0',
+  binaryLabel: "stocker",
+  binaryName: "stocker",
+  binaryVersion: "1.0.0",
 });
 
 cli.register(FetchCommand);
@@ -24,6 +26,8 @@ cli.register(TickersCommand);
 cli.register(TickersUpdateCommand);
 cli.register(TickersSearchCommand);
 cli.register(TickersStatsCommand);
+cli.register(MigrateCSVCommand);
+cli.register(PricesCommand);
 cli.register(Builtins.HelpCommand);
 cli.register(Builtins.VersionCommand);
 
