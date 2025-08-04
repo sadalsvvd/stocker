@@ -1,11 +1,13 @@
 import { EODHistoricalService } from "./services/eodHistorical.ts";
 import { StockDuckDBStorage } from "./storage/stocks.ts";
+import { ReferenceStorage } from "./storage/reference.ts";
 import { updateConfig } from "./config.ts";
-import type { Config } from "./types/index.ts";
+import type { Config, TickerInfo } from "./types/index.ts";
 
 export class Stocker {
   public storage: StockDuckDBStorage;
   private dataService: EODHistoricalService;
+  private referenceStorage: ReferenceStorage;
 
   constructor(config?: Partial<Config>) {
     if (config) {
@@ -15,10 +17,12 @@ export class Stocker {
     const dataDir = config?.storage?.dataDir || "./data";
     this.storage = new StockDuckDBStorage(dataDir);
     this.dataService = new EODHistoricalService(config?.sources?.eodhd?.apiKey);
+    this.referenceStorage = new ReferenceStorage(dataDir);
   }
 
   async init(): Promise<void> {
     await this.storage.init();
+    await this.referenceStorage.init();
   }
 
   async fetch(
@@ -91,6 +95,25 @@ export class Stocker {
       await this.storage.writeDaily(symbol, data);
       console.log(`Stored ${symbol} with ${data.length} records`);
     }
+    
+    // Track ticker in registry if not already present
+    const existingTicker = await this.referenceStorage.getTicker(symbol);
+    if (!existingTicker) {
+      console.log(`Adding ${symbol} to ticker registry...`);
+      const tickerInfo: TickerInfo = {
+        symbol: symbol,
+        companyName: symbol, // We don't have company name from EOD data alone
+        exchange: "US",
+        status: "active",
+        firstSeen: new Date().toISOString().split("T")[0]!,
+        lastUpdated: new Date().toISOString().split("T")[0]!,
+        metadata: {
+          source: "manual_fetch",
+          addedBy: "stocker_fetch"
+        }
+      };
+      await this.referenceStorage.upsertTickers([tickerInfo]);
+    }
   }
 
   async updateSmart(ticker: string): Promise<void> {
@@ -133,7 +156,10 @@ export class Stocker {
     return this.storage.listTickers();
   }
 
-  async info(ticker: string): Promise<void> {
+  async info(
+    ticker: string,
+    options?: { showAllGaps?: boolean }
+  ): Promise<void> {
     const symbol = ticker.toUpperCase();
     const exists = await this.storage.exists(symbol);
 
@@ -153,13 +179,44 @@ export class Stocker {
 
     // Check for gaps
     const gaps = this.findGaps(data);
-    if (gaps.length > 0) {
-      console.log(`\nData gaps detected (${gaps.length}):`);
-      gaps.slice(0, 5).forEach((gap) => {
-        console.log(`  ${gap.start} to ${gap.end} (${gap.days} days)`);
+
+    if (options?.showAllGaps && gaps.length > 0) {
+      // Show all gaps
+      console.log(`\nAll data gaps detected (${gaps.length}):`);
+      console.log(
+        "Note: Includes market holidays and any missing trading days"
+      );
+      gaps.slice(0, 10).forEach((gap) => {
+        console.log(`  ${gap.start} to ${gap.end} (${gap.days} trading days)`);
       });
-      if (gaps.length > 5) {
-        console.log(`  ... and ${gaps.length - 5} more gaps`);
+      if (gaps.length > 10) {
+        console.log(`  ... and ${gaps.length - 10} more gaps`);
+      }
+    } else {
+      // Show only significant gaps (>10 trading days)
+      const significantGaps = gaps.filter((gap) => gap.days > 10);
+
+      if (significantGaps.length > 0) {
+        console.log(
+          `\nSignificant data gaps detected (${significantGaps.length} gaps > 10 trading days):`
+        );
+        significantGaps.slice(0, 5).forEach((gap) => {
+          console.log(
+            `  ${gap.start} to ${gap.end} (${gap.days} trading days)`
+          );
+        });
+        if (significantGaps.length > 5) {
+          console.log(
+            `  ... and ${significantGaps.length - 5} more significant gaps`
+          );
+        }
+        console.log(
+          `\nTotal gaps: ${gaps.length} (including holidays and minor gaps)`
+        );
+      } else if (gaps.length > 0) {
+        console.log(
+          `\nNo significant gaps found (${gaps.length} minor gaps including holidays)`
+        );
       }
     }
   }
@@ -171,30 +228,63 @@ export class Stocker {
 
     if (data.length < 2) return gaps;
 
+    // Helper to check if a date is a trading day (weekday)
+    const isTradingDay = (date: Date): boolean => {
+      const day = date.getDay();
+      return day !== 0 && day !== 6; // Not Sunday (0) or Saturday (6)
+    };
+
+    // Helper to get next trading day
+    const getNextTradingDay = (date: Date): Date => {
+      const next = new Date(date);
+      next.setDate(next.getDate() + 1);
+
+      while (!isTradingDay(next)) {
+        next.setDate(next.getDate() + 1);
+      }
+
+      return next;
+    };
+
+    // Helper to count trading days between two dates (exclusive)
+    const countTradingDaysBetween = (start: Date, end: Date): number => {
+      let count = 0;
+      const current = new Date(start);
+      current.setDate(current.getDate() + 1); // Start from day after start
+
+      while (current < end) {
+        if (isTradingDay(current)) {
+          count++;
+        }
+        current.setDate(current.getDate() + 1);
+      }
+
+      return count;
+    };
+
     for (let i = 1; i < data.length; i++) {
       const prevDate = new Date(data[i - 1]!.date);
       const currDate = new Date(data[i]!.date);
 
-      // Calculate expected next trading day (skip weekends)
-      let expectedDate = new Date(prevDate);
-      expectedDate.setDate(expectedDate.getDate() + 1);
+      // Count missing trading days between previous and current
+      const missingTradingDays = countTradingDaysBetween(prevDate, currDate);
 
-      // Skip weekends
-      while (expectedDate.getDay() === 0 || expectedDate.getDay() === 6) {
-        expectedDate.setDate(expectedDate.getDate() + 1);
-      }
+      // Only report if there are missing trading days
+      if (missingTradingDays > 0) {
+        // Find the actual start and end dates of the gap
+        const gapStart = getNextTradingDay(prevDate);
+        const gapEnd = new Date(currDate);
+        gapEnd.setDate(gapEnd.getDate() - 1);
 
-      // If there's a gap of more than 1 trading day
-      const daysDiff = Math.floor(
-        (currDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (daysDiff > 0) {
+        // Skip weekends at the end of the gap
+        while (!isTradingDay(gapEnd) && gapEnd > gapStart) {
+          gapEnd.setDate(gapEnd.getDate() - 1);
+        }
+
         gaps.push({
-          start: expectedDate.toISOString().split("T")[0]!,
-          end: new Date(currDate.getTime() - 24 * 60 * 60 * 1000)
-            .toISOString()
-            .split("T")[0]!,
-          days: daysDiff + 1,
+          start: gapStart.toISOString().split("T")[0]!,
+          end: gapEnd.toISOString().split("T")[0]!,
+          days: missingTradingDays,
         });
       }
     }
@@ -212,5 +302,7 @@ export class Stocker {
 export * from "./types/index.ts";
 export * from "./config.ts";
 export * from "./services/eodHistorical.ts";
+export * from "./services/sec.ts";
 export * from "./storage/base.ts";
 export * from "./storage/stocks.ts";
+export * from "./storage/reference.ts";

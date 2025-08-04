@@ -10,20 +10,24 @@ export interface ParquetTable {
 
 export class DuckDBBase {
   protected db: Database | null = null;
-  protected dataDir: string;
+  protected _dataDir: string;
 
   constructor(dataDir: string) {
-    this.dataDir = dataDir;
+    this._dataDir = dataDir;
+  }
+  
+  get dataDir(): string {
+    return this._dataDir;
   }
 
   async init(): Promise<void> {
     // Ensure data directory exists
-    if (!existsSync(this.dataDir)) {
-      mkdirSync(this.dataDir, { recursive: true });
+    if (!existsSync(this._dataDir)) {
+      mkdirSync(this._dataDir, { recursive: true });
     }
 
     // Initialize DuckDB
-    const catalogPath = join(this.dataDir, "catalog.duckdb");
+    const catalogPath = join(this._dataDir, "catalog.duckdb");
     this.db = await Database.create(catalogPath);
   }
 

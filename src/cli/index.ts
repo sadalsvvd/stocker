@@ -4,6 +4,12 @@ import { Cli, Builtins } from 'clipanion';
 import { FetchCommand } from './commands/fetch';
 import { ListCommand } from './commands/list';
 import { InfoCommand } from './commands/info';
+import { 
+  TickersCommand, 
+  TickersUpdateCommand, 
+  TickersSearchCommand, 
+  TickersStatsCommand 
+} from './commands/tickers';
 
 const cli = new Cli({
   binaryLabel: 'stocker',
@@ -14,6 +20,10 @@ const cli = new Cli({
 cli.register(FetchCommand);
 cli.register(ListCommand);
 cli.register(InfoCommand);
+cli.register(TickersCommand);
+cli.register(TickersUpdateCommand);
+cli.register(TickersSearchCommand);
+cli.register(TickersStatsCommand);
 cli.register(Builtins.HelpCommand);
 cli.register(Builtins.VersionCommand);
 

@@ -13,23 +13,34 @@ export class InfoCommand extends Command {
       - Total number of records
       - Data source
       - Last update time
-      - Any data gaps detected
+      - Any significant data gaps (>10 trading days)
+      
+      Use --all-gaps to show all gaps including holidays and minor gaps.
     `,
-    examples: [["Show info for AAPL", "stocker info AAPL"]],
+    examples: [
+      ["Show info for AAPL", "stocker info AAPL"],
+      ["Show all gaps including holidays", "stocker info AAPL --all-gaps"],
+    ],
   });
 
   ticker = Option.String({ required: true });
+  
+  allGaps = Option.Boolean("--all-gaps", false, {
+    description: "Show all gaps including holidays and minor gaps",
+  });
 
   async execute() {
     const stocker = new Stocker();
     await stocker.init();
 
     try {
-      await stocker.info(this.ticker);
+      await stocker.info(this.ticker, { showAllGaps: this.allGaps });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       console.error(`Failed to get info: ${errorMessage}`);
+    } finally {
+      await stocker.close();
     }
   }
 }
