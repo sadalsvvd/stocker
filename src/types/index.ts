@@ -63,3 +63,43 @@ export interface Config {
     parallel: number;
   };
 }
+
+export interface TickerInfo {
+  symbol: string;
+  figi?: string;
+  cusip?: string;
+  isin?: string;
+  companyName: string;
+  exchange: string;
+  sector?: string;
+  industry?: string;
+  ipoDate?: string;
+  delistedDate?: string;
+  status: 'active' | 'delisted' | 'merged' | 'acquired';
+  firstSeen: string;
+  lastUpdated: string;
+  metadata?: Record<string, any>;
+}
+
+export interface IPOEvent {
+  symbol: string;
+  filingDate?: string;
+  priceDate?: string;
+  ipoDate: string;
+  offerPrice?: number;
+  openPrice?: number;
+  closePrice?: number;
+  sharesOffered?: number;
+  leadUnderwriter?: string;
+  status: 'filed' | 'priced' | 'traded' | 'withdrawn';
+  prospectusUrl?: string;
+}
+
+export interface CorporateAction {
+  symbol: string;
+  exDate: string;
+  actionType: 'dividend' | 'split' | 'spinoff' | 'rights';
+  value: number;
+  currency?: string;
+  metadata?: Record<string, any>;
+}

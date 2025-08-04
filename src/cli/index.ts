@@ -2,6 +2,8 @@
 
 import { Cli, Builtins } from 'clipanion';
 import { FetchCommand } from './commands/fetch';
+import { ListCommand } from './commands/list';
+import { InfoCommand } from './commands/info';
 
 const cli = new Cli({
   binaryLabel: 'stocker',
@@ -10,6 +12,8 @@ const cli = new Cli({
 });
 
 cli.register(FetchCommand);
+cli.register(ListCommand);
+cli.register(InfoCommand);
 cli.register(Builtins.HelpCommand);
 cli.register(Builtins.VersionCommand);
 

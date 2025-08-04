@@ -131,7 +131,5 @@ export class FetchCommand extends Command {
         }
       }
     }
-
-    await stocker.close();
   }
 }

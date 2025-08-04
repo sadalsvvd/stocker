@@ -72,8 +72,6 @@ const tickers = await stocker.list();
 
 // Get info about a ticker
 await stocker.info('AAPL');
-
-await stocker.close();
 ```
 
 ### Data Storage

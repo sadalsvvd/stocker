@@ -33,8 +33,6 @@ async function test() {
     });
   } catch (error) {
     console.error("Error:", error);
-  } finally {
-    await stocker.close();
   }
 }
 

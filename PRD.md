@@ -28,7 +28,7 @@
 2. Environment variable changed from `EOD_HISTORICAL_DATA_API_KEY` to `EODHD_API_KEY`
 3. OHLCV type expanded to include adjusted values for all OHLC prices
 4. Using duckdb-async instead of duckdb
-5. Currently using dotenv (should be removed for Bun)
+5. Using dotenv for environment variables
 6. CLI not yet implemented - currently library-only
 
 ## Overview
@@ -77,7 +77,7 @@ data/                       # Project-relative data directory (git-tracked)
   - Default paths and settings
   - Runtime configuration overrides via constructor
   - Time interval constants for future intraday support
-- **Changes**: Using dotenv for environment variables (contradicts Bun guidance)
+- **Changes**: Using dotenv for environment variables
 
 ### 2. Data Services
 Port the following Python services to TypeScript:
@@ -313,7 +313,7 @@ defaults:
     "axios": "^1.0.0",             // HTTP client for API calls
     "p-limit": "^5.0.0",           // Rate limiting (not yet implemented)
     "yaml": "^2.0.0",              // Config file parsing
-    "dotenv": "^16.0.0"            // Environment variables (should be removed for Bun)
+    "dotenv": "^16.0.0"            // Environment variables
   }
 }
 ```

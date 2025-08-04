@@ -38,14 +38,10 @@ export class Stocker {
       // Only set start date if not explicitly provided
       if (!options.start && !options.end) {
         // Fetch all data to fill any gaps
-        console.log(
-          `Fetching all data for ${symbol} to fill any gaps...`
-        );
+        console.log(`Fetching all data for ${symbol} to fill any gaps...`);
       } else if (!options.start) {
         // If only end date is provided, still fetch from beginning
-        console.log(
-          `Fetching ${symbol} from beginning to ${options.end}...`
-        );
+        console.log(`Fetching ${symbol} from beginning to ${options.end}...`);
       } else {
         // Use provided dates
         console.log(
@@ -99,21 +95,23 @@ export class Stocker {
 
   async updateSmart(ticker: string): Promise<void> {
     const symbol = ticker.toUpperCase();
-    
+
     if (!(await this.storage.exists(symbol))) {
-      console.log(`No existing data for ${symbol}, performing initial fetch...`);
+      console.log(
+        `No existing data for ${symbol}, performing initial fetch...`
+      );
       await this.fetch(ticker);
       return;
     }
 
     const data = await this.storage.getDaily(symbol);
-    
+
     // Check for gaps
     const gaps = this.findGaps(data);
-    
+
     if (gaps.length > 0) {
       console.log(`Found ${gaps.length} gaps in ${symbol} data`);
-      
+
       // Fetch all data to fill gaps
       await this.fetch(ticker, { update: true });
     } else {
@@ -122,10 +120,10 @@ export class Stocker {
         const lastDate = data[data.length - 1]!.date;
         const nextDate = new Date(lastDate);
         nextDate.setDate(nextDate.getDate() + 1);
-        
+
         await this.fetch(ticker, {
           start: nextDate.toISOString().split("T")[0],
-          update: true
+          update: true,
         });
       }
     }
@@ -157,7 +155,7 @@ export class Stocker {
     const gaps = this.findGaps(data);
     if (gaps.length > 0) {
       console.log(`\nData gaps detected (${gaps.length}):`);
-      gaps.slice(0, 5).forEach(gap => {
+      gaps.slice(0, 5).forEach((gap) => {
         console.log(`  ${gap.start} to ${gap.end} (${gap.days} days)`);
       });
       if (gaps.length > 5) {
@@ -166,45 +164,47 @@ export class Stocker {
     }
   }
 
-  private findGaps(data: Array<{ date: string }>): Array<{ start: string; end: string; days: number }> {
+  private findGaps(
+    data: Array<{ date: string }>
+  ): Array<{ start: string; end: string; days: number }> {
     const gaps: Array<{ start: string; end: string; days: number }> = [];
-    
+
     if (data.length < 2) return gaps;
 
     for (let i = 1; i < data.length; i++) {
       const prevDate = new Date(data[i - 1]!.date);
       const currDate = new Date(data[i]!.date);
-      
+
       // Calculate expected next trading day (skip weekends)
       let expectedDate = new Date(prevDate);
       expectedDate.setDate(expectedDate.getDate() + 1);
-      
+
       // Skip weekends
       while (expectedDate.getDay() === 0 || expectedDate.getDay() === 6) {
         expectedDate.setDate(expectedDate.getDate() + 1);
       }
-      
+
       // If there's a gap of more than 1 trading day
-      const daysDiff = Math.floor((currDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysDiff = Math.floor(
+        (currDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
       if (daysDiff > 0) {
         gaps.push({
-          start: expectedDate.toISOString().split('T')[0]!,
-          end: new Date(currDate.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]!,
-          days: daysDiff + 1
+          start: expectedDate.toISOString().split("T")[0]!,
+          end: new Date(currDate.getTime() - 24 * 60 * 60 * 1000)
+            .toISOString()
+            .split("T")[0]!,
+          days: daysDiff + 1,
         });
       }
     }
-    
+
     return gaps;
   }
 
   async query(sql: string): Promise<any[]> {
     // This would be implemented when we have direct DuckDB query access
     throw new Error("Direct SQL queries not yet implemented");
-  }
-
-  async close(): Promise<void> {
-    await this.storage.close();
   }
 }
 
